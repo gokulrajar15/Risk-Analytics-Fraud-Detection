@@ -8,8 +8,6 @@ load_dotenv()
 
 env_variables = dict(dotenv_values('.env'))
 
-print(dict(env_variables))
-
 credentials = service_account.Credentials.from_service_account_file(
     os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 )
@@ -24,7 +22,7 @@ aiplatform.init(
 
 training_job = aiplatform.CustomContainerTrainingJob(
     display_name=f"fraud-detection-training-{datetime.now().strftime('%Y%m%d%H%M%S')}",
-    container_uri="us-central1-docker.pkg.dev/poetic-velocity-459409-f2/vertex-training-repo/fraud-detection-trainer:latest",
+    container_uri=os.getenv("CONTAINER_IMAGE_URI"),
     staging_bucket=os.getenv("GCP_BUCKET_NAME")
 )
 
