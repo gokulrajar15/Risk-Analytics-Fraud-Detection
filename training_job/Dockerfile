@@ -1,5 +1,16 @@
-FROM gcr.io/deeplearning-platform-release/tf2-cpu.2-7:latest
+FROM python:3.11-slim
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 WORKDIR /app
-COPY . .
-RUN pip install -r requirements.txt
-ENTRYPOINT ["python", "train.py"]
+
+COPY training_job/requirements.txt .
+
+RUN uv pip install -r requirements.txt --system
+
+# Copy the training_job directory contents into the container
+
+COPY training_job/ ./training_job/
+COPY .env .
+
+ENTRYPOINT ["python", "training_job/training/train.py"]
