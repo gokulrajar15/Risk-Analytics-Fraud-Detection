@@ -22,10 +22,9 @@ aiplatform.init(
 
 training_job = aiplatform.CustomContainerTrainingJob(
     display_name=f"fraud-detection-training-{datetime.now().strftime('%Y%m%d%H%M%S')}",
-    container_uri=os.getenv("CONTAINER_IMAGE_URI"),
+    container_uri="us-central1-docker.pkg.dev/poetic-velocity-459409-f2/vertex-training-repo/fraud-detection-trainer:latest",
     staging_bucket=os.getenv("GCP_BUCKET_NAME")
 )
-
 print(training_job)
 
 print("Starting training job...")
