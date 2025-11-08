@@ -61,7 +61,7 @@ def load_and_validate_data():
     try:
         biqquery_path = os.getenv("BIGQUERY_PATH")
 
-        query = f"SELECT * FROM `{biqquery_path}` Limit 1000"
+        query = f"SELECT * FROM `{biqquery_path}`"
         df = bigquery_client.query(query).to_dataframe()
         
         rows, columns = df.shape
