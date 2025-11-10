@@ -375,7 +375,7 @@ try:
         artifact_uri=model_uri,
         serving_container_image_uri=prediction_image,
         parent_model=parent_model,
-        is_default_version=True,
+        is_default_version=False,
         version_aliases=[ENVIRONMENT],
         version_description=run_name,
         labels={

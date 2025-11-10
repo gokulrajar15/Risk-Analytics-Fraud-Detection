@@ -31,7 +31,7 @@ print("Starting training job...")
 
 operation = training_job.run(
     replica_count=1,
-    machine_type="n1-standard-4",
+    machine_type="c2-standard-4",
     environment_variables=env_variables,
 )
 
