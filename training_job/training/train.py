@@ -410,24 +410,81 @@ logger.info("STEP 8: DEPLOYMENT PREPARATION")
 logger.info("=" * 80)
 
 try:
-    # Log deployment metadata
-    deployment_metadata = {
+    DEPLOYMENT_APPROVAL = os.getenv("DEPLOYMENT_APPROVAL", "auto")
+    ENDPOINT_NAME = os.getenv("ENDPOINT_NAME")
+    DEPLOYMENT_NAME = os.getenv("DEPLOYMENT_MODEL_NAME")
+    MACHINE_TYPE = os.getenv("ENDPOINT_DEPLOY_MACHINE_TYPE")
+    MAX_REPLICA_COUNT = os.getenv("ENDPOINT_DEPLOY_MAX_REPLICA_COUNT")
+    MIN_REPLICA_COUNT = os.getenv("ENDPOINT_DEPLOY_MIN_REPLICA_COUNT")
+    TRAFFIC_PERCENTAGE = os.getenv("TRAFFIC_PERCENTAGE", "0")
+
+
+    if DEPLOYMENT_APPROVAL.lower() == "manual":
+        logger.info("Manual deployment approval required - Awaiting human intervention")
+        deployment_metadata = {
         "model_version": registered_model.version_id,
         "deployment_timestamp": datetime.now().isoformat(),
-        "deployment_strategy": "manual_approval_required"
+        "deployment_strategy": os.getenv("DEPLOYMENT_APPROVAL", "auto")
     }
     
-    aiplatform.log_params(deployment_metadata)
+        aiplatform.log_params(deployment_metadata)
+        aiplatform.end_run()
+        sys.exit(0)
     
-    logger.info("Model ready for deployment")
-    logger.info(f"Model Version: {registered_model.version_id}")
-    logger.info(f"Performance Summary: F1={metrics['f1_score']:.4f}, AUC={metrics['auc_roc']:.4f}")
-    
-    aiplatform.end_run()
-    
-    logger.info("Training pipeline completed successfully!")
-    logger.info("Next step: Deploy model using separate deployment pipeline")
-    
+    else:
+        logger.info("Automatic deployment approval - Proceeding to deployment")
+
+        endpoint_display_name = f"{ENDPOINT_NAME}-{CODE_VERSION}"
+        try:
+            existing_endpoints = aiplatform.Endpoint.list(
+                filter=f'display_name="{endpoint_display_name}"',
+                order_by="create_time"
+            )
+            if existing_endpoints:
+                endpoint = existing_endpoints[0]
+                print(f"Using existing endpoint: {endpoint.display_name}")
+            else:
+                endpoint = aiplatform.Endpoint.create(
+                    display_name=endpoint_display_name,
+                    project=GCP_PROJECT_ID,
+                    location=GCP_REGION,
+                )
+
+
+            deployed_model_name = f"{DEPLOYMENT_NAME}-{CODE_VERSION}-{run_name}"
+
+            deployed_model = endpoint.deploy(
+                model=model,
+                deployed_model_display_name=deployed_model_name,
+                machine_type=MACHINE_TYPE,
+                min_replica_count=MIN_REPLICA_COUNT,
+                max_replica_count=MAX_REPLICA_COUNT,
+                traffic_percentage=int(TRAFFIC_PERCENTAGE),
+                sync=True,
+                enable_access_logging=True,
+                deploy_request_timeout=1800
+            )
+
+            deployment_metadata = {
+                    "model_version": registered_model.version_id,
+                    "deployment_timestamp": datetime.now().isoformat(),
+                    "deployment_strategy": os.getenv("DEPLOYMENT_APPROVAL", "auto"),
+                    "endpoint_id": endpoint.resource_name,
+                    "deployed_model_id": deployed_model.deployed_model_id
+                }
+            aiplatform.log_params(deployment_metadata)
+            logger.info(f"Model successfully deployed to endpoint: {endpoint.display_name}")
+        except Exception as e:
+            logger.error(f"Model deployment failed: {e}")
+            aiplatform.log_params({"deployment_status": "FAILED"})
+            aiplatform.end_run()
+            sys.exit(1)
+
+        aiplatform.end_run()
+        sys.exit(1)
+        
+        logger.info("Training pipeline completed successfully!")
+        
 except Exception as e:
     logger.error(f"Deployment preparation failed: {e}")
     sys.exit(1)
