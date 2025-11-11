@@ -126,6 +126,14 @@ try:
         random_state=42
     )
     
+    # Convert DataFrames to lists
+    X_train = X_train.values.tolist()
+    X_test = X_test.values.tolist()
+    y_train = y_train.tolist()
+    y_test = y_test.tolist()
+    
+    logger.info("Converted training and testing data to list format")
+    
     # Calculate class weights
     counter = Counter(y_train)
     negative = counter[0]
@@ -133,14 +141,14 @@ try:
     scale_pos_weight = negative / positive
     
     logger.info("Data split completed successfully")
-    logger.info(f"Training set: {X_train.shape[0]:,} samples")
-    logger.info(f"Test set: {X_test.shape[0]:,} samples")
+    logger.info(f"Training set: {len(X_train):,} samples")
+    logger.info(f"Test set: {len(X_test):,} samples")
     logger.info(f"Class balance - Negative: {negative:,}, Positive: {positive:,}")
     logger.info(f"Calculated scale_pos_weight: {scale_pos_weight:.3f}")
     
     aiplatform.log_params({
-        "train_size": X_train.shape[0],
-        "test_size": X_test.shape[0],
+        "train_size": len(X_train),
+        "test_size": len(X_test),
         "scale_pos_weight": scale_pos_weight
     })
     
@@ -414,9 +422,9 @@ try:
     ENDPOINT_NAME = os.getenv("ENDPOINT_NAME")
     DEPLOYMENT_NAME = os.getenv("DEPLOYMENT_MODEL_NAME")
     MACHINE_TYPE = os.getenv("ENDPOINT_DEPLOY_MACHINE_TYPE")
-    MAX_REPLICA_COUNT = os.getenv("ENDPOINT_DEPLOY_MAX_REPLICA_COUNT")
-    MIN_REPLICA_COUNT = os.getenv("ENDPOINT_DEPLOY_MIN_REPLICA_COUNT")
-    TRAFFIC_PERCENTAGE = os.getenv("TRAFFIC_PERCENTAGE", "0")
+    MAX_REPLICA_COUNT = int(os.getenv("ENDPOINT_DEPLOY_MAX_REPLICA_COUNT", "1"))
+    MIN_REPLICA_COUNT = int(os.getenv("ENDPOINT_DEPLOY_MIN_REPLICA_COUNT", "1"))
+    TRAFFIC_PERCENTAGE = int(os.getenv("TRAFFIC_PERCENTAGE", "0"))
 
 
     if DEPLOYMENT_APPROVAL.lower() == "manual":
@@ -454,12 +462,12 @@ try:
             deployed_model_name = f"{DEPLOYMENT_NAME}-{CODE_VERSION}-{run_name}"
 
             deployed_model = endpoint.deploy(
-                model=model,
+                model=registered_model,
                 deployed_model_display_name=deployed_model_name,
                 machine_type=MACHINE_TYPE,
                 min_replica_count=MIN_REPLICA_COUNT,
                 max_replica_count=MAX_REPLICA_COUNT,
-                traffic_percentage=int(TRAFFIC_PERCENTAGE),
+                traffic_percentage=TRAFFIC_PERCENTAGE,
                 sync=True,
                 enable_access_logging=True,
                 deploy_request_timeout=1800
@@ -469,8 +477,7 @@ try:
                     "model_version": registered_model.version_id,
                     "deployment_timestamp": datetime.now().isoformat(),
                     "deployment_strategy": os.getenv("DEPLOYMENT_APPROVAL", "auto"),
-                    "endpoint_id": endpoint.resource_name,
-                    "deployed_model_id": deployed_model.deployed_model_id
+                    "endpoint_id": endpoint.resource_name
                 }
             aiplatform.log_params(deployment_metadata)
             logger.info(f"Model successfully deployed to endpoint: {endpoint.display_name}")
@@ -480,13 +487,13 @@ try:
             aiplatform.end_run()
             sys.exit(1)
 
-        aiplatform.end_run()
-        sys.exit(1)
-        
-        logger.info("Training pipeline completed successfully!")
+            aiplatform.end_run()
+            logger.info("Training pipeline completed successfully!")
         
 except Exception as e:
     logger.error(f"Deployment preparation failed: {e}")
+    aiplatform.log_params({"training_status": "FAILED"})
+    aiplatform.end_run()
     sys.exit(1)
 
 logger.info("=" * 80)
