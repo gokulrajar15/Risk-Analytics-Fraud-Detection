@@ -17,7 +17,7 @@ from google.oauth2 import service_account
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-credentials = service_account.Credentials.from_service_account_file("serviceAccountKey.json")
+credentials = service_account.Credentials.from_service_account_file("")
 
 model = None
 

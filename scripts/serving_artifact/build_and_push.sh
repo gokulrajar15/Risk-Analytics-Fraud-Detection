@@ -1,126 +1,97 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Build and push serving container to Artifact Registry
-# Bash script
+# === Variables – adjust as needed ===
+PROJECT_ID="${PROJECT_ID:-poetic-velocity-459409-f2}"
+REGION="${REGION:-us-central1}"
+REPO_NAME="${SERVING_REPO_NAME:-vertex-ai-customservingartifact}"
+IMAGE_NAME="${SERVING_IMAGE_NAME:-fraud-detection-serving}"
+TAG="${TAG:-latest}"
+DOCKERFILE_PATH="${DOCKERFILE_PATH:-./serving_container}"
 
-# Default values from environment variables
-PROJECT_ID=${GCP_PROJECT_ID}
-REGION=${GCP_REGION}
-REPOSITORY="serving-repo"
-IMAGE_NAME="fraud-detection-serving"
-TAG="latest"
+# Full image URI for Artifact Registry
+IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/${IMAGE_NAME}:${TAG}"
 
-# Parse command line arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -p|--project)
-            PROJECT_ID="$2"
-            shift 2
-            ;;
-        -r|--region)
-            REGION="$2"
-            shift 2
-            ;;
-        --repository)
-            REPOSITORY="$2"
-            shift 2
-            ;;
-        --image-name)
-            IMAGE_NAME="$2"
-            shift 2
-            ;;
-        --tag)
-            TAG="$2"
-            shift 2
-            ;;
-        -h|--help)
-            echo "Usage: $0 [OPTIONS]"
-            echo "Options:"
-            echo "  -p, --project     GCP Project ID (default: \$GCP_PROJECT_ID)"
-            echo "  -r, --region      GCP Region (default: \$GCP_REGION)"
-            echo "  --repository      Artifact Registry repository (default: serving-repo)"
-            echo "  --image-name      Docker image name (default: fraud-detection-serving)"
-            echo "  --tag             Image tag (default: latest)"
-            echo "  -h, --help        Show this help message"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            exit 1
-            ;;
-    esac
-done
-
-# Check required parameters
-if [[ -z "$PROJECT_ID" ]]; then
-    echo "Error: PROJECT_ID is required. Set GCP_PROJECT_ID environment variable or pass -p parameter."
-    exit 1
-fi
-
-if [[ -z "$REGION" ]]; then
-    echo "Error: REGION is required. Set GCP_REGION environment variable or pass -r parameter."
-    exit 1
-fi
-
-FULL_IMAGE_NAME="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${IMAGE_NAME}:${TAG}"
-
-echo "Building and pushing serving container..."
-echo "Project ID: $PROJECT_ID"
+# === Script starts ===
+echo "🔧 Building & Pushing Serving Container to Artifact Registry"
+echo "Project: ${PROJECT_ID:0:8}***" # Only show first 8 chars for security
 echo "Region: $REGION"
-echo "Image: $FULL_IMAGE_NAME"
+echo "Repository: $REPO_NAME"
+echo "Image name: $IMAGE_NAME"
+echo "Tag: $TAG"
+echo "Image URI: ${REGION}-docker.pkg.dev/${PROJECT_ID:0:8}***/${REPO_NAME}/${IMAGE_NAME}:${TAG}"
+echo ""
 
-# Configure Docker for Artifact Registry
-echo "Configuring Docker authentication..."
-gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
-
-if [[ $? -ne 0 ]]; then
-    echo "Error: Failed to configure Docker authentication"
+# Check if required variables are set
+if [ "$PROJECT_ID" = "your-gcp-project-id" ]; then
+    echo "❌ ERROR: Please set your actual GCP Project ID!"
+    echo "Use: export PROJECT_ID=\"poetic-velocity-459409-f2\""
     exit 1
 fi
 
-# Create repository if it doesn't exist
-echo "Creating Artifact Registry repository (if not exists)..."
-gcloud artifacts repositories create "$REPOSITORY" \
-    --repository-format=docker \
-    --location="$REGION" \
-    --description="Serving container repository" \
-    --quiet 2>/dev/null
-
-# Build the Docker image
-echo "Building Docker image..."
-docker build -t "$FULL_IMAGE_NAME" .
-
-if [[ $? -ne 0 ]]; then
-    echo "Error: Failed to build Docker image"
+# Function to handle errors
+handle_error() {
+    echo "❌ ERROR: $1" >&2
     exit 1
-fi
+}
 
-# Push the Docker image
-echo "Pushing Docker image to Artifact Registry..."
-docker push "$FULL_IMAGE_NAME"
+# Verify gcloud authentication
+verify_auth() {
+    if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" | grep -q "@"; then
+        handle_error "No active gcloud authentication found. Please run 'gcloud auth login' first."
+    fi
+}
 
-if [[ $? -ne 0 ]]; then
-    echo "Error: Failed to push Docker image"
-    exit 1
-fi
-
-echo "Successfully built and pushed serving container!"
-echo "Image URI: $FULL_IMAGE_NAME"
-
-# Update .env file with the new image URI
-ENV_FILE="../.env"
-if [[ -f "$ENV_FILE" ]]; then
-    echo "Updating .env file with new serving image URI..."
+# Test container health
+test_container_health() {
+    local container_id=$1
+    echo "🔍 Testing container health..."
     
-    # Create backup
-    cp "$ENV_FILE" "${ENV_FILE}.backup"
+    # Wait for container to start
+    sleep 10
     
-    # Update or add SERVING_IMAGE line
-    if grep -q "^SERVING_IMAGE" "$ENV_FILE"; then
-        sed -i "s|^SERVING_IMAGE=.*|SERVING_IMAGE=\"$FULL_IMAGE_NAME\"|" "$ENV_FILE"
+    # Test health endpoint
+    if curl -f -s http://localhost:8080/health > /dev/null 2>&1; then
+        echo "✅ Health check passed"
     else
-        echo "SERVING_IMAGE=\"$FULL_IMAGE_NAME\"" >> "$ENV_FILE"
+        echo "⚠️  Health check warning (container may still be starting)"
     fi
     
-    echo "Updated .env file with serving image URI"
-fi
+    # Clean up test container
+    docker stop "$container_id" > /dev/null 2>&1 || true
+    docker rm "$container_id" > /dev/null 2>&1 || true
+    echo "✅ Test container cleaned up"
+}
+
+# Verify gcloud authentication
+verify_auth
+
+# Authenticate gcloud and configure Docker auth
+echo "🔐 Logging into GCP & configuring Docker auth..."
+gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet || handle_error "Failed to configure Docker authentication"
+echo "✅ Done configuring Docker auth."
+
+# Build Docker image
+echo "🔨 Building serving container..."
+docker build -f "${DOCKERFILE_PATH}/Dockerfile" -t "${IMAGE_URI}" . || handle_error "Failed to build Docker image"
+echo "✅ Build complete."
+
+# Test container locally (optional)
+echo "🧪 Testing container locally..."
+CONTAINER_ID=$(docker run -d -p 8080:8080 \
+    -e MODEL_NAME=fraud_detection \
+    -e LOG_LEVEL=INFO \
+    -e BATCH_SIZE=32 \
+    "${IMAGE_URI}") || handle_error "Failed to start test container"
+
+test_container_health "$CONTAINER_ID"
+
+# Push Docker image
+echo "📤 Pushing image to Artifact Registry..."
+docker push "${IMAGE_URI}" || handle_error "Failed to push Docker image"
+echo "✅ Push complete."
+
+echo "🎉 SUCCESS: Serving image ${IMAGE_URI} is now in Artifact Registry."
+echo ""
+echo "📋 Copy this image URI for deployment:"
+echo "${IMAGE_URI}"

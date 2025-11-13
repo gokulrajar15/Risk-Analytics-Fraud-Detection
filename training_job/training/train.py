@@ -341,7 +341,7 @@ logger.info("STEP 6: MODEL ARTIFACT STORAGE")
 logger.info("=" * 80)
 
 try:
-    artifact_uri = f"gs://{os.getenv('GCP_BUCKET_NAME')}/{run_name}/"
+    artifact_uri = f"gs://{os.getenv('BUCKET_NAME')}/{run_name}/"
 
     response = aiplatform.save_model(
         model=model, 
@@ -377,11 +377,19 @@ try:
         logger.info("Creating new model in registry")
     
     logger.info(f"Registering model: {model_registry_name}")
+
+    serving_container_environment_variables = {
+        "BUCKET_NAME": os.getenv("BUCKET_NAME"),
+        "BUCKET_MODEL_FOLDER_PATH": run_name
+    }
     
     registered_model = aiplatform.Model.upload(
         display_name=model_registry_name,
         artifact_uri=model_uri,
         serving_container_image_uri=prediction_image,
+        # serving_container_environment_variables=serving_container_environment_variables,
+        # serving_container_predict_route="/predict",
+        # serving_container_health_route="/health",
         parent_model=parent_model,
         is_default_version=False,
         version_aliases=[ENVIRONMENT],

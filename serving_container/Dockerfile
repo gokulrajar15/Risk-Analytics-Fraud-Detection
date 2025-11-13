@@ -1,21 +1,14 @@
 FROM python:3.11-slim
 
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
-    && rm -rf /var/lib/apt/lists/*
+COPY serving_container/requirements.txt .
 
-COPY requirements.txt .
+RUN uv pip install -r requirements.txt --system
 
-RUN pip install --no-cache-dir -r requirements.txt
+COPY serving_container/ ./serving_container/
+COPY .env .
 
-COPY app.py .
-
-RUN mkdir -p /app/model
-
-EXPOSE 8080
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
-
-CMD ["python", "app.py"]
+CMD ["python", "serving_container/app.py"]
